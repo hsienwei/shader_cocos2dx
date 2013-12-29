@@ -285,6 +285,138 @@ void LightLayer::draw()
 
 //=================================================================
 
+PostProcessing* PostProcessing::create(Texture2D *texture)
+{
+	PostProcessing *layer = new PostProcessing();
+	if (layer && layer->initWithTexture(texture))
+	{
+		layer->autorelease();
+		layer->initProgram();
+		return layer;
+	}
+	CC_SAFE_DELETE(layer);
+	return NULL;
+}
+
+//bool PostProcessing::initWithTexture(CCTexture2D* texture, const CCRect& rect)
+//{
+//	if (CCSprite::initWithTexture(texture, rect))
+//	{
+//		CCSize s = getTexture()->getContentSizeInPixels();
+//
+//		return true;
+//	}
+//
+//	return false;
+//}
+
+void PostProcessing::initProgram()
+{
+	std::string sharderStr = CCFileUtils::getInstance()->fullPathForFilename("Shaders/shader_postprocessing.fsh");
+	GLchar * fragSource = (GLchar*)CCString::createWithContentsOfFile(sharderStr.c_str())->getCString();
+	CCGLProgram* pProgram = new CCGLProgram();
+	pProgram->initWithVertexShaderByteArray(ccPositionTextureColor_vert, fragSource);
+	setShaderProgram(pProgram);
+	pProgram->release();
+
+	CHECK_GL_ERROR_DEBUG();
+
+	getShaderProgram()->addAttribute(kCCAttributeNamePosition, kCCVertexAttrib_Position);
+	getShaderProgram()->addAttribute(kCCAttributeNameColor, kCCVertexAttrib_Color);
+	getShaderProgram()->addAttribute(kCCAttributeNameTexCoord, kCCVertexAttrib_TexCoords);
+
+	CHECK_GL_ERROR_DEBUG();
+
+	getShaderProgram()->link();
+
+	CHECK_GL_ERROR_DEBUG();
+
+	getShaderProgram()->updateUniforms();
+
+	CHECK_GL_ERROR_DEBUG();
+
+	_offsetLocation = glGetUniformLocation(getShaderProgram()->getProgram(), "u_offset");
+
+	CHECK_GL_ERROR_DEBUG();
+
+	this->scheduleUpdate();
+}
+
+void PostProcessing::update(float dt)
+{
+	static float elapsedTIme = 0.0f;
+	elapsedTIme += dt;
+	move = elapsedTIme * 2 * 3.14159 * .75;  // 3/4 of a wave cycle per second
+}
+
+void PostProcessing::draw()
+{
+	CC_PROFILER_START_CATEGORY(kProfilerCategorySprite, "CCSprite - draw");
+
+	CCASSERT(!_batchNode, "If Sprite is being rendered by SpriteBatchNode, Sprite#draw SHOULD NOT be called");
+
+	CC_NODE_DRAW_SETUP();
+
+	glUniform1f(_offsetLocation, move);
+
+	GL::blendFunc(_blendFunc.src, _blendFunc.dst);
+
+	GL::bindTexture2D(_texture->getName());
+	GL::enableVertexAttribs(GL::VERTEX_ATTRIB_FLAG_POS_COLOR_TEX);
+
+#define kQuadSize sizeof(_quad.bl)
+#ifdef EMSCRIPTEN
+	long offset = 0;
+	setGLBufferData(&_quad, 4 * kQuadSize, 0);
+#else
+	long offset = (long)&_quad;
+#endif // EMSCRIPTEN
+
+	// vertex
+	int diff = offsetof(V3F_C4B_T2F, vertices);
+	glVertexAttribPointer(GLProgram::VERTEX_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, kQuadSize, (void*)(offset + diff));
+
+	// texCoods
+	diff = offsetof(V3F_C4B_T2F, texCoords);
+	glVertexAttribPointer(GLProgram::VERTEX_ATTRIB_TEX_COORDS, 2, GL_FLOAT, GL_FALSE, kQuadSize, (void*)(offset + diff));
+
+	// color
+	diff = offsetof(V3F_C4B_T2F, colors);
+	glVertexAttribPointer(GLProgram::VERTEX_ATTRIB_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, kQuadSize, (void*)(offset + diff));
+
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	CHECK_GL_ERROR_DEBUG();
+
+
+#if CC_SPRITE_DEBUG_DRAW == 1
+	// draw bounding box
+	Point vertices[4] = {
+		Point(_quad.tl.vertices.x, _quad.tl.vertices.y),
+		Point(_quad.bl.vertices.x, _quad.bl.vertices.y),
+		Point(_quad.br.vertices.x, _quad.br.vertices.y),
+		Point(_quad.tr.vertices.x, _quad.tr.vertices.y),
+	};
+	ccDrawPoly(vertices, 4, true);
+#elif CC_SPRITE_DEBUG_DRAW == 2
+	// draw texture box
+	Size s = this->getTextureRect().size;
+	Point offsetPix = this->getOffsetPosition();
+	Point vertices[4] = {
+		Point(offsetPix.x, offsetPix.y), Point(offsetPix.x + s.width, offsetPix.y),
+		Point(offsetPix.x + s.width, offsetPix.y + s.height), Point(offsetPix.x, offsetPix.y + s.height)
+	};
+	ccDrawPoly(vertices, 4, true);
+#endif // CC_SPRITE_DEBUG_DRAW
+
+	CC_INCREMENT_GL_DRAWS(1);
+
+	CC_PROFILER_STOP_CATEGORY(kProfilerCategorySprite, "CCSprite - draw");
+}
+
+//=================================================================
+
 class GrayMask : public CCSprite
 {
 public:
@@ -539,6 +671,11 @@ void SpriteMask::draw()
 //===================================================
 const int LAYER_SPOT = 1;
 
+HelloWorld::~HelloWorld()
+{
+	renderTexture->release();
+}
+
 Scene* HelloWorld::createScene()
 {
     // 'scene' is an autorelease object
@@ -567,6 +704,17 @@ bool HelloWorld::init()
     Size visibleSize = Director::getInstance()->getVisibleSize();
     Point origin = Director::getInstance()->getVisibleOrigin();
 
+
+	mainLayer = Layer::create();
+	mainLayerParent = Layer::create();
+	postProcessingLayer = Layer::create();
+	uiLayer = Layer::create();
+
+	this->addChild(mainLayerParent);
+	mainLayerParent->addChild(mainLayer);
+	this->addChild(postProcessingLayer);
+	this->addChild(uiLayer);
+
     /////////////////////////////
     // 2. add a menu item with "X" image, which is clicked to quit the program
     //    you may modify it.
@@ -580,44 +728,60 @@ bool HelloWorld::init()
 	closeItem->setPosition(Point(origin.x + visibleSize.width - closeItem->getContentSize().width/2 ,
                                 origin.y + closeItem->getContentSize().height/2));
 
+	auto switchItem = MenuItemImage::create(
+											"switchuser.png",
+											"switchuser.png",
+											CC_CALLBACK_1(HelloWorld::switchCallback, this));
+
+	switchItem->setPosition(Point(origin.x + visibleSize.width - closeItem->getContentSize().width - switchItem->getContentSize().width/2,
+		origin.y + closeItem->getContentSize().height / 2));
+
     // create menu, it's an autorelease object
-    auto menu = Menu::create(closeItem, NULL);
+	auto menu = Menu::create(closeItem, switchItem, NULL);
     menu->setPosition(Point::ZERO);
-    this->addChild(menu, 1);
+	uiLayer->addChild(menu, 1);
 
     
 	// shader Εγ₯ά
 
 	SpriteMask* pSprite2 = SpriteMask::create("wall_77.png");
 	pSprite2->setPosition(ccp(visibleSize.width / 2 - 90, visibleSize.height / 2));
-	this->addChild(pSprite2, 0);
+	mainLayer->addChild(pSprite2, 0);
 
 	SpriteMask* pSprite3 = SpriteMask::create("wall_77.png");
 	pSprite3->setMask("wall0.png");
 	pSprite3->setPosition(ccp(visibleSize.width / 2 -30, visibleSize.height / 2));
-	this->addChild(pSprite3, 0);
-
+	mainLayer->addChild(pSprite3, 0);
 
 	GrayMask* pSprite4 = GrayMask::create("wall_77.png");
-	//pSprite3->setMask("wall0.png");
 	pSprite4->setPosition(ccp(visibleSize.width / 2 + 30, visibleSize.height / 2));
-	this->addChild(pSprite4, 0);
+	mainLayer->addChild(pSprite4, 0);
 
 	EdgeMask* pSprite5 = EdgeMask::create("wall_77.png");
 	pSprite5->setPosition(ccp(visibleSize.width / 2 + 90, visibleSize.height / 2));
-	this->addChild(pSprite5, 0);
+	mainLayer->addChild(pSprite5, 0);
 
 	LightLayer *layer2 = LightLayer::create();
 	layer2->setTag(LAYER_SPOT);
-	this->addChild(layer2, 0);
-
+	mainLayer->addChild(layer2, 0);
 
 	DynamicBackground *layer3 = DynamicBackground::create();
 	layer3->setBackgroundPic();
-	this->addChild(layer3, -1);
+	mainLayer->addChild(layer3, -1);
 
+	renderTexture = RenderTexture::create(visibleSize.width, visibleSize.height);
+	renderTexture->retain();
+
+	mainLayerParent->setVisible(false);
+	isPostProcessing = true;
 	
-
+	PostProcessing *test = PostProcessing::create(renderTexture->getSprite()->getTexture());
+	test->setFlippedY(true);
+	//test->setScale(0.4f);
+	postProcessingLayer->addChild(test);
+	test->setPosition(Point(test->boundingBox().size.width/2, 
+							visibleSize.height - test->boundingBox().size.height / 2));
+	
 	// Register Touch Event
 	auto listener = EventListenerTouchOneByOne::create();
 	listener->setSwallowTouches(true);
@@ -628,10 +792,16 @@ bool HelloWorld::init()
 
 	_eventDispatcher->addEventListenerWithSceneGraphPriority(listener, this);
 
+	this->scheduleUpdate();
 	return true;
-
 }
 
+void HelloWorld::update(float deltaTime)
+{
+	renderTexture->begin();
+	mainLayer->visit();
+	renderTexture->end();
+}
 
 void HelloWorld::menuCloseCallback(Object* pSender)
 {
@@ -640,6 +810,21 @@ void HelloWorld::menuCloseCallback(Object* pSender)
 #if (CC_TARGET_PLATFORM == CC_PLATFORM_IOS)
     exit(0);
 #endif
+}
+
+void HelloWorld::switchCallback(Object* pSender)
+{
+	if (isPostProcessing)
+	{
+		mainLayerParent->setVisible(true);
+		postProcessingLayer->setVisible(false);
+	}
+	else
+	{
+		mainLayerParent->setVisible(false);
+		postProcessingLayer->setVisible(true);
+	}
+	isPostProcessing = !isPostProcessing;
 }
 
 bool HelloWorld::onTouchBegan(Touch *touch, Event *unused_event)
@@ -652,6 +837,6 @@ void HelloWorld::onTouchEnded(Touch *touch, Event *unused_event)
 {
 	CCLog("touch");
 	Point touchPos = touch->getLocation();
-	LightLayer *layer = (LightLayer*)this->getChildByTag(LAYER_SPOT);
+	LightLayer *layer = (LightLayer*)mainLayer->getChildByTag(LAYER_SPOT);
 	layer->setSpotPosition(touchPos);
 }
