@@ -25,6 +25,7 @@ void main() {
     else
     {
         float step = smoothstep(v_spot_outerRadius, v_spot_innerRadius, spotDistance);
-        gl_FragColor = v_spot_innerColor * step + v_fragmentColor * (1- step);
+        float one = 1.0;
+        gl_FragColor = v_spot_innerColor * step + v_fragmentColor * (one - step);
     }
 }

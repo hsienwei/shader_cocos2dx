@@ -87,7 +87,7 @@ float IsEdge(in vec2 coords){
 void main()
 {
     vec4 color = vec4(0.0,0.0,1.0,1.0);
-    if(IsEdge(v_texCoord))
+    if(IsEdge(v_texCoord) != 0.0)
         gl_FragColor = color;
     else
         gl_FragColor=  texture2D(u_texture, v_texCoord);
