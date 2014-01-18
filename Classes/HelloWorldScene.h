@@ -14,6 +14,7 @@ private:
 	GLint _offsetLocation;
 
 	//bool initWithTexture(CCTexture2D* texture, const CCRect&  rect);
+	void listenBackToForeground(cocos2d::CCObject *obj);
 	void initProgram();
 	void update(float dt);
 	void draw();

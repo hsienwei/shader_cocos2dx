@@ -10,4 +10,5 @@ post processing
 
 2014.1.18  
 修改shader後可執行於android   
-但有進背景再回前景時會出錯的問題待解
+
+使用CCNotificationCenter處理回背景回前景時shader重新載入

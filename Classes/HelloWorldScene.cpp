@@ -7,6 +7,7 @@ class EdgeMask : public CCSprite
 public:
 	static EdgeMask* create(const std::string& filename);
 private:
+	void listenBackToForeground(CCObject *obj);
 	void initProgram();
 };
 
@@ -17,10 +18,17 @@ EdgeMask* EdgeMask::create(const std::string& filename)
 	{
 		sprite->autorelease();
 		sprite->initProgram();
+		CCNotificationCenter::sharedNotificationCenter()->addObserver(sprite, callfuncO_selector(EdgeMask::listenBackToForeground), EVNET_COME_TO_FOREGROUND, NULL);
 		return sprite;
 	}
 	CC_SAFE_DELETE(sprite);
 	return NULL;
+}
+
+void EdgeMask::listenBackToForeground(CCObject *obj)
+{
+	setShaderProgram(NULL);
+	initProgram();
 }
 
 void EdgeMask::initProgram()
@@ -66,12 +74,19 @@ private:
 	Texture2D *_bgTexture;
 
 	
-
+	void listenBackToForeground(CCObject *obj);
 	void initProgram();
 	void draw();
 	void update(float dt);
 
 };
+
+void DynamicBackground::listenBackToForeground(CCObject *obj)
+{
+	setShaderProgram(NULL);
+	initProgram();
+}
+
 
 DynamicBackground* DynamicBackground::create()
 {
@@ -95,6 +110,7 @@ void DynamicBackground::setBackgroundPic()
 	//_maskTexture->setAliasTexParameters();
 	_bgTexture->retain();
 
+	CCNotificationCenter::sharedNotificationCenter()->addObserver(this, callfuncO_selector(DynamicBackground::listenBackToForeground), EVNET_COME_TO_FOREGROUND, NULL);
 	this->initProgram();
 	this->scheduleUpdate();
 }
@@ -191,6 +207,7 @@ private:
 
 	Point _spotPoint;
 
+	void listenBackToForeground(CCObject *obj);
 	void initProgram();
 	void draw();
 };
@@ -202,10 +219,17 @@ LightLayer* LightLayer::create()
 	{
 		layer->autorelease();
 		layer->initProgram();
+		CCNotificationCenter::sharedNotificationCenter()->addObserver(layer, callfuncO_selector(LightLayer::listenBackToForeground), EVNET_COME_TO_FOREGROUND, NULL);
 		return layer;
 	}
 	CC_SAFE_DELETE(layer);
 	return NULL;
+}
+
+void LightLayer::listenBackToForeground(CCObject *obj)
+{
+	setShaderProgram(NULL);
+	initProgram();
 }
 
 void LightLayer::initProgram()
@@ -292,6 +316,7 @@ PostProcessing* PostProcessing::create(Texture2D *texture)
 	{
 		layer->autorelease();
 		layer->initProgram();
+		CCNotificationCenter::sharedNotificationCenter()->addObserver(layer, callfuncO_selector(PostProcessing::listenBackToForeground), EVNET_COME_TO_FOREGROUND, NULL);
 		return layer;
 	}
 	CC_SAFE_DELETE(layer);
@@ -309,6 +334,12 @@ PostProcessing* PostProcessing::create(Texture2D *texture)
 //
 //	return false;
 //}
+
+void PostProcessing::listenBackToForeground(CCObject *obj)
+{
+	setShaderProgram(NULL);
+	initProgram();
+}
 
 void PostProcessing::initProgram()
 {
@@ -422,6 +453,7 @@ class GrayMask : public CCSprite
 public:
 	static GrayMask* create(const std::string& filename);
 private:
+	void listenBackToForeground(CCObject *obj);
 	void initProgram();
 };
 
@@ -432,10 +464,17 @@ GrayMask* GrayMask::create(const std::string& filename)
 	{
 		sprite->autorelease();
 		sprite->initProgram();
+		CCNotificationCenter::sharedNotificationCenter()->addObserver(sprite, callfuncO_selector(GrayMask::listenBackToForeground), EVNET_COME_TO_FOREGROUND, NULL);
 		return sprite;
 	}
 	CC_SAFE_DELETE(sprite);
 	return NULL;
+}
+
+void GrayMask::listenBackToForeground(CCObject *obj)
+{
+	setShaderProgram(NULL);
+	initProgram();
 }
 
 void GrayMask::initProgram()
